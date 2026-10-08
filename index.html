@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>中秋快乐 · 四画面 · 转场 · 音乐版</title>
+<style>
+  html, body {
+    margin: 0; padding: 0;
+    background: #000;
+    overflow: hidden;
+    font-family: 'Microsoft YaHei', sans-serif;
+  }
+  canvas {
+    display: block;
+  }
+  #audio-controls {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 100;
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid rgba(255, 105, 180, 0.5);
+    padding: 10px 20px;
+    border-radius: 30px;
+    color: white;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 0 15px rgba(255, 105, 180, 0.3);
+  }
+  #audioUpload {
+    color: #ff69b4;
+    cursor: pointer;
+    max-width: 160px;
+    font-size: 12px;
+  }
+  #audioUpload::-webkit-file-upload-button {
+    background: #ff1493;
+    color: white;
+    border: none;
+    padding: 5px 12px;
+    border-radius: 15px;
+    cursor: pointer;
+    font-weight: bold;
+  }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div id="audio-controls">
+  <span>🎵 导入背景音乐</span>
+  <input type="file" id="audioUpload" accept="audio/*">
+</div>
+
+<audio id="bgMusic" loop></audio>
+
+<script>
+/* ==========================================
+   中秋特效：四画面循环 + 淡入淡出转场 + 音乐
+   ========================================== */
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let width, height, centerX, centerY;
+let scene = 'heart';
+let sceneStartTime = performance.now();
+
+// ---------- 转场状态机 ----------
+const DISPLAY_DURATION = 5000;      // 每个画面停留 4 秒
+const TRANSITION_DURATION = 500;    // 淡出/淡入各 0.5 秒
+let transitionState = 'idle';       // 'idle' | 'out' | 'in'
+let transitionStart = 0;
+let nextScene = null;
+
+// ---------- 音乐播放逻辑 ----------
+const audioUpload = document.getElementById('audioUpload');
+const bgMusic = document.getElementById('bgMusic');
+
+audioUpload.addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (file) {
+    const fileURL = URL.createObjectURL(file);
+    bgMusic.src = fileURL;
+    bgMusic.play().then(() => {
+      console.log("音乐开始播放");
+    }).catch(error => {
+      console.error("播放失败:", error);
+      alert("音乐已导入！如果没声音，请点击一下网页任意位置再试。");
+    });
+  }
+});
+
+// ---------- 基础设置 ----------
+function resize() {
+  width = canvas.width = window.innerWidth;
+  height = canvas.height = window.innerHeight;
+  centerX = width / 2;
+  centerY = height / 2;
+}
+window.addEventListener('resize', () => {
+  resize();
+  if (scene === 'heart') initHeart();
+  if (scene === 'moon') initMoonText();
+  if (scene === 'people') initPeopleText();
+  if (scene === 'shunSui') initShunSuiText();
+});
+resize();
+
+// ---------- 星空背景 ----------
+const stars = Array.from({ length: 150 }, () => ({
+  x: Math.random() * width,
+  y: Math.random() * height,
+  r: Math.random() * 1.5 + 0.5,
+  alpha: Math.random() * 0.8 + 0.2,
+  speed: Math.random() * 0.02 + 0.01
+}));
+
+// ---------- 数字雨 ----------
+const rainText = '中秋快乐';
+const rainDrops = [];
+const MAX_DROPS = 120;
+
+function initRain() {
+  rainDrops.length = 0;
+  for (let i = 0; i < MAX_DROPS; i++) {
+    rainDrops.push({
+      x: Math.random() * width,
+      y: Math.random() * height - height,
+      speed: Math.random() * 2 + 1,
+      size: Math.random() * 14 + 10,
+      alpha: Math.random() * 0.5 + 0.2,
+      text: rainText[Math.floor(Math.random() * rainText.length)],
+      color: Math.random() > 0.5 ? '#ff69b4' : '#ff1493'
+    });
+  }
+}
+initRain();
+
+// ---------- 爱心粒子 ----------
+const heartParticles = [];
+const HEART_PARTICLE_COUNT = 800;
+
+function heartFormula(t) {
+  const x = 16 * Math.pow(Math.sin(t), 3);
+  const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+  return { x, y };
+}
+
+function initHeart() {
+  heartParticles.length = 0;
+  const scale = Math.min(width, height) / 45;
+  for (let i = 0; i < HEART_PARTICLE_COUNT; i++) {
+    const t = Math.random() * Math.PI * 2;
+    const { x, y } = heartFormula(t);
+    const offsetX = (Math.random() - 0.5) * 30;
+    const offsetY = (Math.random() - 0.5) * 30;
+    heartParticles.push({
+      baseX: x * scale + offsetX,
+      baseY: -y * scale + offsetY,
+      size: Math.random() * 4 + 2,
+      alpha: Math.random() * 0.8 + 0.2,
+      phase: Math.random() * Math.PI * 2,
+      speed: Math.random() * 0.05 + 0.02,
+      color: Math.random() > 0.3 ? '#ff69b4' : '#ff1493'
+    });
+  }
+}
+initHeart();
+
+// ---------- 通用文字粒子 ----------
+const moonParticles = [];
+const peopleParticles = [];
+const shunSuiParticles = [];
+
+function initTextParticles(text, targetArray) {
+  targetArray.length = 0;
+
+  const offCanvas = document.createElement('canvas');
+  const offCtx = offCanvas.getContext('2d');
+  offCanvas.width = width;
+  offCanvas.height = height;
+
+  offCtx.fillStyle = '#ffffff';
+  offCtx.font = `bold ${Math.min(width, height) / 4}px 'Microsoft YaHei', sans-serif`;
+  offCtx.textAlign = 'center';
+  offCtx.textBaseline = 'middle';
+  offCtx.fillText(text, centerX, centerY);
+
+  const imageData = offCtx.getImageData(0, 0, width, height).data;
+  const gap = 5;
+
+  for (let y = 0; y < height; y += gap) {
+    for (let x = 0; x < width; x += gap) {
+      const index = (y * width + x) * 4;
+      const alpha = imageData[index + 3];
+
+      if (alpha > 128) {
+        if (Math.random() < 0.4) continue;
+
+        targetArray.push({
+          x: Math.random() * width,
+          y: Math.random() * height,
+          targetX: x,
+          targetY: y,
+          size: Math.random() * 2 + 1,
+          alpha: Math.random() * 0.5 + 0.5,
+          phase: Math.random() * Math.PI * 2,
+          speed: Math.random() * 0.05 + 0.02,
+          ease: Math.random() * 0.05 + 0.02
+        });
+      }
+    }
+  }
+}
+
+function initMoonText()   { initTextParticles('月长圆', moonParticles); }
+function initPeopleText() { initTextParticles('人长久', peopleParticles); }
+function initShunSuiText(){ initTextParticles('事顺遂', shunSuiParticles); }
+
+// ---------- 场景切换工具 ----------
+function getNextScene(current) {
+  const order = ['heart', 'moon', 'people', 'shunSui'];
+  const idx = order.indexOf(current);
+  return order[(idx + 1) % order.length];
+}
+
+function applyScene(s) {
+  if (s === 'heart') initHeart();
+  else if (s === 'moon') initMoonText();
+  else if (s === 'people') initPeopleText();
+  else if (s === 'shunSui') initShunSuiText();
+}
+
+function easeInOut(t) {
+  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+}
+
+// ---------- 转场状态机更新 ----------
+function updateTransition(now) {
+  if (transitionState === 'idle') {
+    // 停留时间到了，开始淡出
+    if (now - sceneStartTime > DISPLAY_DURATION) {
+      transitionState = 'out';
+      transitionStart = now;
+      nextScene = getNextScene(scene);
+    }
+  } else if (transitionState === 'out') {
+    const t = (now - transitionStart) / TRANSITION_DURATION;
+    if (t >= 1) {
+      // 完全黑屏，偷偷切换场景
+      scene = nextScene;
+      applyScene(scene);
+      transitionState = 'in';
+      transitionStart = now;
+    }
+  } else if (transitionState === 'in') {
+    const t = (now - transitionStart) / TRANSITION_DURATION;
+    if (t >= 1) {
+      transitionState = 'idle';
+      sceneStartTime = now; // 重置停留计时
+    }
+  }
+}
+
+// 计算当前遮罩的透明度（0 = 全透明，1 = 全黑）
+function getTransitionAlpha(now) {
+  if (transitionState === 'idle') return 0;
+  if (transitionState === 'out') {
+    const t = Math.min(1, (now - transitionStart) / TRANSITION_DURATION);
+    return easeInOut(t);
+  }
+  if (transitionState === 'in') {
+    const t = Math.min(1, (now - transitionStart) / TRANSITION_DURATION);
+    return 1 - easeInOut(t);
+  }
+  return 0;
+}
+
+// ---------- 动画循环 ----------
+let time = 0;
+
+function animate() {
+  const now = performance.now();
+  time += 0.05;
+
+  updateTransition(now);
+
+  // 清屏（拖尾）
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+  ctx.fillRect(0, 0, width, height);
+
+  // 星空
+  stars.forEach(s => {
+    s.alpha += s.speed;
+    if (s.alpha > 1 || s.alpha < 0.2) s.speed *= -1;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255, 255, 255, ${s.alpha})`;
+    ctx.fill();
+  });
+
+  // 渲染当前场景
+  if (scene === 'heart') {
+    rainDrops.forEach(d => {
+      d.y += d.speed;
+      if (d.y > height + 50) {
+        d.y = -50;
+        d.x = Math.random() * width;
+      }
+      ctx.font = `${d.size}px 'Microsoft YaHei', sans-serif`;
+      ctx.fillStyle = d.color;
+      ctx.globalAlpha = d.alpha;
+      ctx.fillText(d.text, d.x, d.y);
+      ctx.globalAlpha = 1;
+    });
+
+    heartParticles.forEach(p => {
+      const x = centerX + p.baseX + Math.sin(time * p.speed + p.phase) * 4;
+      const y = centerY + p.baseY + Math.cos(time * p.speed + p.phase) * 4;
+      const breath = Math.sin(time * 2 + p.phase) * 0.5 + 0.5;
+      const currentSize = p.size * (0.8 + breath * 0.6);
+
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = p.color;
+      ctx.beginPath();
+      ctx.arc(x, y, currentSize, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = p.alpha * (0.6 + breath * 0.4);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.shadowBlur = 0;
+    });
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `bold ${Math.min(width, height) / 18}px 'Microsoft YaHei', sans-serif`;
+    ctx.shadowBlur = 30;
+    ctx.shadowColor = '#ff1493';
+    ctx.fillStyle = '#ff69b4';
+    ctx.fillText('❤️ 祝你中秋快乐 ❤️', centerX, centerY);
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.strokeText('❤️ 祝你中秋快乐 ❤️', centerX, centerY);
+    ctx.restore();
+
+  } else if (scene === 'moon' || scene === 'people' || scene === 'shunSui') {
+    let particles;
+    if (scene === 'moon') particles = moonParticles;
+    else if (scene === 'people') particles = peopleParticles;
+    else particles = shunSuiParticles;
+
+    particles.forEach(p => {
+      p.x += (p.targetX - p.x) * p.ease;
+      p.y += (p.targetY - p.y) * p.ease;
+
+      const floatX = p.x + Math.sin(time * p.speed + p.phase) * 2;
+      const floatY = p.y + Math.cos(time * p.speed + p.phase) * 2;
+
+      const breath = Math.sin(time * 2 + p.phase) * 0.5 + 0.5;
+      const currentSize = p.size * (0.8 + breath * 0.6);
+
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(floatX, floatY, currentSize, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 255, 255, ${p.alpha * (0.6 + breath * 0.4)})`;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    });
+  }
+
+  // ---------- 绘制转场遮罩（在所有内容最上层） ----------
+  const alpha = getTransitionAlpha(now);
+  if (alpha > 0) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+  }
+
+  // 左下角标签
+  ctx.save();
+  ctx.font = `bold ${Math.min(width, height) / 40}px 'Microsoft YaHei', sans-serif`;
+  ctx.fillStyle = '#ffcc00';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('#中秋节 #中秋', 30, height - 30);
+  ctx.restore();
+
+  requestAnimationFrame(animate);
+}
+
+animate();
+</script>
+</body>
+</html>
